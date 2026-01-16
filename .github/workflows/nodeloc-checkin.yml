@@ -20,6 +20,12 @@ jobs:
       - name: 🛎️ 检出代码
         uses: actions/checkout@v4
 
+      - name: 🧭 安装 Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
       - name: 🐍 设置 Python
         uses: actions/setup-python@v5
         with:
@@ -41,6 +47,8 @@ jobs:
           TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           TG_USER_ID: ${{ secrets.TG_USER_ID }}
           WXPUSHER_APP_TOKEN: ${{ secrets.WXPUSHER_APP_TOKEN }}
+          GOOGLE_CHROME_BIN: ${{ steps.setup-chrome.outputs.chrome-path }}
+          CHROME_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
         run: |
           python nodeloc.py
 

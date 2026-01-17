@@ -13,6 +13,7 @@ cron: 59 8 * * *
 const $ = new Env("NodeLoc签到");
 """
 import os
+import sys
 import time
 import logging
 from datetime import datetime
@@ -46,7 +47,7 @@ def generate_screenshot_path(prefix: str) -> str:
     return os.path.join(SCREENSHOT_DIR, f"{prefix}_{ts}.png")
 
 def get_username_from_user_page(driver) -> str:
-    log.debug("🔍 正在提取用户名...")
+    log.info("🔍 正在提取用户名...")
     try:
         element = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, USERNAME_SELECTOR))
@@ -124,7 +125,7 @@ def perform_checkin(driver, username: str):
         if "checked-in" in button.get_attribute("class"):
             msg = f"[✅] {username} 今日已签到"
             log.info(msg)
-            return msg
+            return False
 
         log.info(f"📌 {username} - 准备签到")
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
@@ -137,14 +138,14 @@ def perform_checkin(driver, username: str):
         if "checked-in" in button.get_attribute("class"):
             msg = f"[🎉] {username} 签到成功！"
             log.info(msg)
-            return msg
+            return True
         else:
             msg = f"[⚠️] {username} 点击后状态未更新，可能失败"
             log.warning(msg)
             path = generate_screenshot_path("checkin_uncertain")
             driver.save_screenshot(path)
             log.info(f"📸 已保存状态存疑截图：{path}")
-            return msg
+            return False
 
     except Exception as e:
         msg = f"[❌] {username} 签到异常: {e}"
@@ -155,25 +156,26 @@ def perform_checkin(driver, username: str):
             log.info(f"📸 已保存错误截图：{path}")
         except:
             pass
-        return msg
+        return False
 
 def process_account(cookie_str: str):
     cookie = cookie_str.split("#", 1)[0].strip()
     if not cookie:
         log.error("❌ Cookie 为空")
-        return "[❌] Cookie 为空"
+        return False
 
     driver = None
     try:
         driver = setup_browser()
         if not driver:
-            return "[❌] 浏览器启动失败"
+            log.error("❌ 浏览器启动失败")
+            return False
 
         log.info("🚀 正在打开用户列表页...")
         driver.get(HOME_URL)
         time.sleep(3)
 
-        log.debug("🍪 正在设置 Cookie...")
+        log.info("🍪 正在设置 Cookie...")
         for item in cookie.split(";"):
             item = item.strip()
             if not item or "=" not in item:
@@ -196,7 +198,8 @@ def process_account(cookie_str: str):
         time.sleep(5)
 
         if not check_login_status(driver):
-            return "[❌] 登录失败，Cookie 可能失效"
+            log.error("❌ 登录失败，Cookie 可能失效")
+            return False
 
         username = get_username_from_user_page(driver)
         log.info(f"👤 当前用户: {username}")
@@ -221,7 +224,7 @@ def main():
         msg = "❌ 未设置 NL_COOKIE 环境变量"
         print(msg)
         results.append(msg)
-        return
+        sys.exit(1)
 
     raw_lines = os.environ.get("NL_COOKIE").strip().split("\n")
     cookies = [line.strip() for line in raw_lines if line.strip()]
@@ -230,7 +233,7 @@ def main():
         msg = "❌ 未解析到有效 Cookie"
         print(msg)
         results.append(msg)
-        return
+        sys.exit(1)
 
     log.info(f"✅ 查找到 {len(cookies)} 个账号，开始顺序签到...")
 
@@ -239,7 +242,19 @@ def main():
         results.append(result)
         time.sleep(5)
 
-    log.info("✅ 全部签到完成")
+    success_count = sum(1 for r in results if r is True)
+    fail_count = sum(1 for r in results if r is False)
+    log.info(f"✅ 全部执行完成 - 成功: {success_count}, 失败: {fail_count}")
+
+    if success_count == 0:
+        log.error("❌ 所有账号签到均失败")
+        sys.exit(1)
+    elif fail_count > 0:
+        log.warning(f"⚠️ 有 {fail_count} 个账号签到失败")
+        sys.exit(1)
+    else:
+        log.info("✅ 所有账号签到成功")
+        sys.exit(0)
 
 if __name__ == '__main__':
     main()
